@@ -1,5 +1,4 @@
-# copyright 2024 © Xron Trix | https://github.com/Xrontrix10
-
+# colab_leecher/utility/helper.py
 
 import os
 import math
@@ -21,7 +20,6 @@ from colab_leecher.utility.variables import (
     BotTimes,
     Messages,
     Paths,
-    save_destination,
 )
 
 
@@ -197,7 +195,7 @@ async def setThumbnail(message):
         if ospath.exists(Paths.THMB_PATH):
             os.remove(Paths.THMB_PATH)
         event_loop = get_event_loop()
-        th_set = event_loop.create_task(message.download(file_name=Paths.THMB_PATH)) 
+        th_set = event_loop.create_task(message.download(file_name=Paths.THMB_PATH))
         await th_set
         BOT.Setting.thumbnail = True
         if BOT.State.task_going and MSG.status_msg:
@@ -236,9 +234,9 @@ def sysINFO():
     cpu_usage_percent = psutil.cpu_percent()
 
     string = "\n\n⌬─────「 Colab Usage 」─────⌬\n"
-    string += f"\n╭🖥️ **CPU Usage »**  __{cpu_usage_percent}%__"
-    string += f"\n├💽 **RAM Usage »**  __{sizeUnit(ram_usage)}__"
-    string += f"\n╰💾 **DISK Free »**  __{sizeUnit(disk_usage.free)}__"
+    string += f"\n╭🖥️ **CPU Usage »** __{cpu_usage_percent}%__"
+    string += f"\n├💽 **RAM Usage »** __{sizeUnit(ram_usage)}__"
+    string += f"\n╰💾 **DISK Free »** __{sizeUnit(disk_usage.free)}__"
     string += Messages.caution_msg
 
     return string
@@ -355,7 +353,6 @@ async def send_settings(client, message, msg_id, command: bool):
                 InlineKeyboardButton("Set Suffix", callback_data="set-suffix"),
                 InlineKeyboardButton("Set Prefix", callback_data="set-prefix"),
             ],
-            [InlineKeyboardButton("Set Destination 📁", callback_data="setfolder")],
             [InlineKeyboardButton("Close ✘", callback_data="close")],
         ]
     )
@@ -368,63 +365,12 @@ async def send_settings(client, message, msg_id, command: bool):
     su = "None" if BOT.Setting.suffix == "" else "Exists"
     thmb = "None" if not BOT.Setting.thumbnail else "Exists"
     text += f"\n├⌬ PREFIX » <i>{pr}</i>\n├⌬ SUFFIX » <i>{su}</i>"
-    text = f"\n├⌬ THUMBNAIL » <i>{thmb}</i>"
-    text = f"\n╰⌬ DEST » <code>{Paths.mirror_dir}</code>"
+    text += f"\n╰⌬ THUMBNAIL » <i>{thmb}</i>"
     try:
         if command:
             await message.reply_text(text=text, reply_markup=keyboard)
         else:
             await colab_bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=msg_id,
-                text=text,
-                reply_markup=keyboard,
-            )
-    except BadRequest as error:
-        logging.error(f"Same text not modified | {error}")
-    except Exception as error:
-        logging.error(f"Error Modifying message | {error}")
-
-def _list_folders():
-    try:
-        return [d for d in os.listdir(Paths.mirror_root) if os.path.isdir(os.path.join(Paths.mirror_root, d))]
-    except Exception:
-        return []
-
-def _safe_name(name: str) -> str:
-    n = (name or "").strip().replace("/", "").replace("\\", "")
-    if ".." in n: n = n.replace("..", "")
-    return n[:100]
-
-async def send_setfolder(client, message, msg_id, command: bool, page: int = 0):
-    folders = _list_folders()
-    folders.sort()
-    page_size = 8
-    start = page * page_size
-    chunk = folders[start:startpage_size]
-    rows = [[InlineKeyboardButton(f"📁 {x}", callback_data=f"setfolder:choose:{starti}")] for i, x in enumerate(chunk)]
-    nav = []
-    if start > 0:
-        nav.append(InlineKeyboardButton("« Prev", callback_data=f"setfolder:page:{page-1}"))
-    if start  page_size < len(folders):
-        nav.append(InlineKeyboardButton("Next »", callback_data=f"setfolder:page:{page1}"))
-    if nav:
-        rows.append(nav)
-    rows.append([InlineKeyboardButton("➕ New Folder", callback_data="setfolder:new"),
-                 InlineKeyboardButton("🔄 Refresh", callback_data="setfolder:refresh")])
-    rows.append([InlineKeyboardButton("Back ⏎", callback_data="back"),
-                 InlineKeyboardButton("Close ✘", callback_data="close")])
-    keyboard = InlineKeyboardMarkup(rows)
-    text = (
-        "CHOOSE DESTINATION FOLDER 📁\n\n"
-        f"Root: <code>{Paths.mirror_root}</code>\n"
-        f"Current: <code>{Paths.mirror_dir}</code>"
-    )
-    try:
-        if command:
-            await message.reply_text(text=text, reply_markup=keyboard)
-        else:
-            await client.edit_message_text(
                 chat_id=message.chat.id,
                 message_id=msg_id,
                 text=text,
@@ -467,3 +413,21 @@ def keyboard():
             [InlineKeyboardButton("Cancel ❌", callback_data="cancel")],
         ]
     )
+
+def get_folders(path, page=1, per_page=5):
+    if not os.path.exists(path):
+        return [], 0, 0
+    folders = [f for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]
+    total_folders = len(folders)
+    total_pages = (total_folders + per_page - 1) // per_page
+    start = (page - 1) * per_page
+    end = start + per_page
+    return folders[start:end], page, total_pages
+
+def create_folder(path, name):
+    try:
+        os.makedirs(os.path.join(path, name))
+        return True
+    except Exception as e:
+        logging.error(f"Error creating folder: {e}")
+        return False
