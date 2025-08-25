@@ -7,7 +7,7 @@ import logging
 import os
 from time import time
 from datetime import datetime
-from asyncio import sleep
+from asyncio import sleep, CancelledError
 from os import makedirs, path as ospath, system
 from colab_leecher import OWNER, colab_bot, DUMP_ID
 from colab_leecher.downlader.manager import calDownSize, get_d_name, downloadManager
@@ -60,124 +60,150 @@ async def task_starter(message, text):
 
 async def taskScheduler():
     global BOT, MSG, BotTimes, Messages, Paths, Transfer, TaskError
-    src_text = []
-    is_dualzip, is_unzip, is_zip, is_dir = (
-        BOT.Mode.type == "undzip",
-        BOT.Mode.type == "unzip",
-        BOT.Mode.type == "zip",
-        BOT.Mode.mode == "dir-leech",
-    )
-    # Reset Texts
-    Messages.download_name = ""
-    Messages.task_msg = f"<b>🦞 TASK MODE » </b>"
-    Messages.dump_task = (
-        Messages.task_msg
-        + f"<i>{BOT.Mode.type.capitalize()} {BOT.Mode.mode.capitalize()} as {BOT.Setting.stream_upload}</i>\n\n<b>🖇️ SOURCES » </b>"
-    )
-    Transfer.sent_file = []
-    Transfer.sent_file_names = []
-    Transfer.down_bytes = [0, 0]
-    Transfer.up_bytes = [0, 0]
-    Messages.download_name = ""
-    Messages.task_msg = ""
-    Messages.status_head = f"<b>📥 DOWNLOADING » </b>\n"
+    
+    task_id = str(time()).replace('.', '')
+    task_path = ospath.join(Paths.WORK_PATH, task_id)
 
-    if is_dir:
-        if not ospath.exists(BOT.SOURCE[0]):
-            TaskError.state = True
-            TaskError.text = "Task Failed. Because: Provided Directory Path Not Exists"
-            logging.error(TaskError.text)
-            return
-        if not ospath.exists(Paths.temp_dirleech_path):
-            makedirs(Paths.temp_dirleech_path)
-        Messages.dump_task += f"\n\n📂 <code>{BOT.SOURCE[0]}</code>"
-        Transfer.total_down_size = getSize(BOT.SOURCE[0])
-        Messages.download_name = ospath.basename(BOT.SOURCE[0])
-    else:
-        for link in BOT.SOURCE:
-            if is_telegram(link):
-                ida = "💬"
-            elif is_google_drive(link):
-                ida = "♻️"
-            elif is_torrent(link):
-                ida = "🧲"
-                Messages.caution_msg = "\n\n⚠️<i><b> Torrents Are Strictly Prohibited in Google Colab</b>, Try to avoid Magnets !</i>"
-            elif is_ytdl_link(link):
-                ida = "🏮"
-            elif is_terabox(link):
-                ida = "🍑"
-            elif is_mega(link):
-                ida = "💾"
-            else:
-                ida = "🔗"
-            code_link = f"\n\n{ida} <code>{link}</code>"
-            if len(Messages.dump_task + code_link) >= 4096:
-                src_text.append(Messages.dump_task)
-                Messages.dump_task = code_link
-            else:
-                Messages.dump_task += code_link
+    original_paths = {}
+    task_paths_to_create = {}
 
-    # Get the current date and time in the specified time zone
-    cdt = datetime.now(pytz.timezone("Asia/Kolkata"))
-    dt = cdt.strftime(" %d-%m-%Y")
-    Messages.dump_task += f"\n\n<b>📆 Task Date » </b><i>{dt}</i>"
-
-    src_text.append(Messages.dump_task)
-
-    if ospath.exists(Paths.WORK_PATH):
-        shutil.rmtree(Paths.WORK_PATH)
-        # makedirs(Paths.WORK_PATH)
-        makedirs(Paths.down_path)
-    else:
-        makedirs(Paths.WORK_PATH)
-        makedirs(Paths.down_path)
-    Messages.link_p = str(DUMP_ID)[4:]
-
+    for attr in dir(Paths):
+        if not callable(getattr(Paths, attr)) and not attr.startswith("__"):
+            original_value = getattr(Paths, attr)
+            if isinstance(original_value, str) and original_value.startswith(Paths.WORK_PATH):
+                original_paths[attr] = original_value
+                new_path = ospath.join(task_path, ospath.relpath(original_value, Paths.WORK_PATH))
+                task_paths_to_create[attr] = new_path
+    
     try:
-        system(f"aria2c -d {Paths.WORK_PATH} -o Hero.jpg {Aria2c.pic_dwn_url}")
-    except Exception:
-        Paths.HERO_IMAGE = Paths.DEFAULT_HERO
+        for attr, new_path in task_paths_to_create.items():
+            setattr(Paths, attr, new_path)
 
-    MSG.sent_msg = await colab_bot.send_message(chat_id=DUMP_ID, text=src_text[0])
+        src_text = []
+        is_dualzip, is_unzip, is_zip, is_dir = (
+            BOT.Mode.type == "undzip",
+            BOT.Mode.type == "unzip",
+            BOT.Mode.type == "zip",
+            BOT.Mode.mode == "dir-leech",
+        )
+        # Reset Texts
+        Messages.download_name = ""
+        Messages.task_msg = f"<b>🦞 TASK MODE » </b>"
+        Messages.dump_task = (
+            Messages.task_msg
+            + f"<i>{BOT.Mode.type.capitalize()} {BOT.Mode.mode.capitalize()} as {BOT.Setting.stream_upload}</i>\n\n<b>🖇️ SOURCES » </b>"
+        )
+        Transfer.sent_file = []
+        Transfer.sent_file_names = []
+        Transfer.down_bytes = [0, 0]
+        Transfer.up_bytes = [0, 0]
+        Messages.download_name = ""
+        Messages.task_msg = ""
+        Messages.status_head = f"<b>📥 DOWNLOADING » </b>\n"
 
-    if len(src_text) > 1:
-        for lin in range(1, len(src_text)):
-            MSG.sent_msg = await MSG.sent_msg.reply_text(text=src_text[lin], quote=True)
+        if is_dir:
+            if not ospath.exists(BOT.SOURCE[0]):
+                TaskError.state = True
+                TaskError.text = "Task Failed. Because: Provided Directory Path Not Exists"
+                logging.error(TaskError.text)
+                return
+            if not ospath.exists(Paths.temp_dirleech_path):
+                makedirs(Paths.temp_dirleech_path)
+            Messages.dump_task += f"\n\n📂 <code>{BOT.SOURCE[0]}</code>"
+            Transfer.total_down_size = getSize(BOT.SOURCE[0])
+            Messages.download_name = ospath.basename(BOT.SOURCE[0])
+        else:
+            for link in BOT.SOURCE:
+                if is_telegram(link):
+                    ida = "💬"
+                elif is_google_drive(link):
+                    ida = "♻️"
+                elif is_torrent(link):
+                    ida = "🧲"
+                    Messages.caution_msg = "\n\n⚠️<i><b> Torrents Are Strictly Prohibited in Google Colab</b>, Try to avoid Magnets !</i>"
+                elif is_ytdl_link(link):
+                    ida = "🏮"
+                elif is_terabox(link):
+                    ida = "🍑"
+                elif is_mega(link):
+                    ida = "💾"
+                else:
+                    ida = "🔗"
+                code_link = f"\n\n{ida} <code>{link}</code>"
+                if len(Messages.dump_task + code_link) >= 4096:
+                    src_text.append(Messages.dump_task)
+                    Messages.dump_task = code_link
+                else:
+                    Messages.dump_task += code_link
 
-    Messages.src_link = f"https://t.me/c/{Messages.link_p}/{MSG.sent_msg.id}"
-    Messages.task_msg += f"__[{BOT.Mode.type.capitalize()} {BOT.Mode.mode.capitalize()} as {BOT.Setting.stream_upload}]({Messages.src_link})__\n\n"
+        cdt = datetime.now(pytz.timezone("Asia/Kolkata"))
+        dt = cdt.strftime(" %d-%m-%Y")
+        Messages.dump_task += f"\n\n<b>📆 Task Date » </b><i>{dt}</i>"
 
-    await MSG.status_msg.delete()
-    img = Paths.THMB_PATH if ospath.exists(Paths.THMB_PATH) else Paths.HERO_IMAGE
-    MSG.status_msg = await colab_bot.send_photo(  # type: ignore
-        chat_id=OWNER,
-        photo=img,
-        caption=Messages.task_msg
-        + Messages.status_head
-        + f"\n📝 __Starting DOWNLOAD...__"
-        + sysINFO(),
-        reply_markup=keyboard(),
-    )
+        src_text.append(Messages.dump_task)
 
-    await calDownSize(BOT.SOURCE)
+        if not ospath.exists(Paths.WORK_PATH):
+            makedirs(Paths.WORK_PATH)
+        
+        makedirs(Paths.down_path)
 
-    if not is_dir:
-        await get_d_name(BOT.SOURCE[0])
-    else:
-        Messages.download_name = ospath.basename(BOT.SOURCE[0])
+        Messages.link_p = str(DUMP_ID)[4:]
 
-    if is_zip:
-        Paths.down_path = ospath.join(Paths.down_path, Messages.download_name)
-        if not ospath.exists(Paths.down_path):
-            makedirs(Paths.down_path)
+        try:
+            system(f"aria2c -d {task_path} -o Hero.jpg {Aria2c.pic_dwn_url}")
+        except Exception:
+            setattr(Paths, 'HERO_IMAGE', Paths.DEFAULT_HERO)
 
-    BotTimes.current_time = time()
+        MSG.sent_msg = await colab_bot.send_message(chat_id=DUMP_ID, text=src_text[0])
 
-    if BOT.Mode.mode != "mirror":
-        await Do_Leech(BOT.SOURCE, is_dir, BOT.Mode.ytdl, is_zip, is_unzip, is_dualzip)
-    else:
-        await Do_Mirror(BOT.SOURCE, BOT.Mode.ytdl, is_zip, is_unzip, is_dualzip)
+        if len(src_text) > 1:
+            for lin in range(1, len(src_text)):
+                MSG.sent_msg = await MSG.sent_msg.reply_text(text=src_text[lin], quote=True)
 
+        Messages.src_link = f"https://t.me/c/{Messages.link_p}/{MSG.sent_msg.id}"
+        Messages.task_msg += f"__[{BOT.Mode.type.capitalize()} {BOT.Mode.mode.capitalize()} as {BOT.Setting.stream_upload}]({Messages.src_link})__\n\n"
+
+        await MSG.status_msg.delete()
+        img = Paths.THMB_PATH if ospath.exists(Paths.THMB_PATH) else Paths.HERO_IMAGE
+        MSG.status_msg = await colab_bot.send_photo( 
+            chat_id=OWNER,
+            photo=img,
+            caption=Messages.task_msg
+            + Messages.status_head
+            + f"\n📝 __Starting DOWNLOAD...__"
+            + sysINFO(),
+            reply_markup=keyboard(),
+        )
+
+        await calDownSize(BOT.SOURCE)
+
+        if not is_dir:
+            await get_d_name(BOT.SOURCE[0])
+        else:
+            Messages.download_name = ospath.basename(BOT.SOURCE[0])
+
+        if is_zip:
+            Paths.down_path = ospath.join(Paths.down_path, Messages.download_name)
+            if not ospath.exists(Paths.down_path):
+                makedirs(Paths.down_path)
+
+        BotTimes.current_time = time()
+
+        if BOT.Mode.mode != "mirror":
+            await Do_Leech(BOT.SOURCE, is_dir, BOT.Mode.ytdl, is_zip, is_unzip, is_dualzip)
+        else:
+            await Do_Mirror(BOT.SOURCE, BOT.Mode.ytdl, is_zip, is_unzip, is_dualzip)
+
+    except CancelledError:
+        logging.info(f"Task {task_id} was cancelled.")
+        raise
+    finally:
+        for attr, original_value in original_paths.items():
+            setattr(Paths, attr, original_value)
+        
+        if ospath.exists(task_path):
+            shutil.rmtree(task_path)
+        logging.info(f"Cleaned up task directory: {task_path}")
 
 async def Do_Leech(source, is_dir, is_ytdl, is_zip, is_unzip, is_dualzip):
     if is_dir:
