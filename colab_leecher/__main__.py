@@ -10,7 +10,7 @@ from colab_leecher.utility.handler import cancelTask
 from .utility.variables import BOT, MSG, BotTimes, Paths
 from .utility.task_manager import taskScheduler, task_starter
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from .utility.helper import isLink, setThumbnail, message_deleter, send_settings
+from .utility.helper import isLink, setThumbnail, message_deleter, send_settings ,send_setfolder  # NEW
 
 
 src_request_msg = None
@@ -85,21 +85,52 @@ async def settings(client, message):
         await send_settings(client, message, message.id, True)
 
 
+@colab_bot.on_message(filters.command("setfolder") & filters.private)
+async def setfolder_cmd(client, message):
+    if message.chat.id == OWNER:
+        await message.delete()
+        await send_setfolder(client, message, message.id, True, page=0)
+
+
+
 @colab_bot.on_message(filters.reply)
 async def setPrefix(client, message):
-    global BOT, SETTING
+    global BOT
     if BOT.State.prefix:
         BOT.Setting.prefix = message.text
         BOT.State.prefix = False
-
         await send_settings(client, message, message.reply_to_message_id, False)
         await message.delete()
+
     elif BOT.State.suffix:
         BOT.Setting.suffix = message.text
         BOT.State.suffix = False
-
         await send_settings(client, message, message.reply_to_message_id, False)
         await message.delete()
+
+    elif BOT.State.new_folder:
+        name = (message.text or "").strip()
+        BOT.State.new_folder = False
+
+        safe = name.replace("/", "").replace("\\", "")
+        if len(safe) == 0 or ".." in safe:
+            await colab_bot.send_message(chat_id=message.chat.id, text="❌ Invalid folder name.")
+        else:
+            try:
+                newp = os.path.join(Paths.mirror_root, safe)
+                os.makedirs(newp, exist_ok=True)
+                Paths.mirror_dir = newp
+                save_destination()
+                await colab_bot.send_message(
+                    chat_id=message.chat.id,
+                    text=f"✅ New folder created and set as destination:\n<code>{newp}</code>",
+                )
+            except Exception as e:
+                logging.error(f"New folder error: {e}")
+                await colab_bot.send_message(chat_id=message.chat.id, text="❌ Error creating folder.")
+        await send_setfolder(client, message, message.reply_to_message_id, False)
+        await message.delete()
+
 
 
 @colab_bot.on_message(filters.create(isLink) & ~filters.photo)
@@ -324,6 +355,31 @@ async def handle_options(client, callback_query):
         await send_settings(
             client, callback_query.message, callback_query.message.id, False
         )
+        elif callback_query.data == "setfolder":
+        await send_setfolder(client, callback_query.message, callback_query.message.id, False, page=0)
+
+    elif callback_query.data.startswith("setfolder:page:"):
+        p = int(callback_query.data.split(":")[-1])
+        await send_setfolder(client, callback_query.message, callback_query.message.id, False, page=p)
+
+    elif callback_query.data.startswith("setfolder:choose:"):
+        idx = int(callback_query.data.split(":")[-1])
+        folders = [d for d in os.listdir(Paths.mirror_root) if os.path.isdir(os.path.join(Paths.mirror_root, d))]
+        folders.sort()
+        if 0 <= idx < len(folders):
+            Paths.mirror_dir = os.path.join(Paths.mirror_root, folders[idx])
+            save_destination()
+        await send_setfolder(client, callback_query.message, callback_query.message.id, False)
+
+    elif callback_query.data == "setfolder:new":
+        BOT.State.new_folder = True
+        await callback_query.message.edit_text(
+            "Reply to this message with a new folder name to create under the root and set as destination »"
+        )
+
+    elif callback_query.data == "setfolder:refresh":
+        await send_setfolder(client, callback_query.message, callback_query.message.id, False)
+
 
     # @main Triggering Actual Leech Functions
     elif callback_query.data in ["ytdl-true", "ytdl-false"]:
