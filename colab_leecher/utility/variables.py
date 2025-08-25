@@ -40,6 +40,7 @@ class BOT:
         task_going = False
         prefix = False
         suffix = False
+        new_folder = False
 
 
 class YTDL:
@@ -79,12 +80,37 @@ class Paths:
     MOUNTED_DRIVE = "/content/drive"
     down_path = f"{WORK_PATH}/Downloads"
     temp_dirleech_path = f"{WORK_PATH}/dir_leech_temp"
-    mirror_dir = "/content/drive/MyDrive/Colab Leecher Uploads"
+    mirror_root = "/content/drive/MyDrive/Colab Leecher Uploads"
+    mirror_dir = mirror_root
     temp_zpath = f"{WORK_PATH}/Leeched_Files"
     temp_unzip_path = f"{WORK_PATH}/Unzipped_Files"
     temp_files_dir = f"{WORK_PATH}/leech_temp"
     thumbnail_ytdl = f"{WORK_PATH}/ytdl_thumbnails"
     access_token = "/content/token.pickle"
+
+import os, json
+_DEST_CFG = "/content/Telegram-Leecher/destination.json"
+
+def _load_destination():
+    try:
+        if os.path.exists(_DEST_CFG):
+            with open(_DEST_CFG) as f:
+                data = json.load(f)
+                mdir = data.get("mirror_dir")
+                if mdir:
+                    Paths.mirror_dir = mdir
+    except Exception:
+        pass
+_load_destination()
+
+def save_destination():
+    try:
+        os.makedirs(os.path.dirname(_DEST_CFG), exist_ok=True)
+        with open(_DEST_CFG, "w") as f:
+            json.dump({"mirror_dir": Paths.mirror_dir}, f)
+    except Exception:
+        pass
+    
 
 
 class Messages:
