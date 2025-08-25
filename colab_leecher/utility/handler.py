@@ -199,9 +199,8 @@ async def cancelTask(Reason: str):
     if BOT.State.task_going:
         try:
             BOT.TASK.cancel()  # type: ignore
-            shutil.rmtree(Paths.WORK_PATH)
         except Exception as e:
-            logging.error(f"Error Deleting Task Folder: {e}")
+            logging.error(f"Error during task cancellation: {e}")
         else:
             logging.info(f"On-Going Task Cancelled !")
         finally:
