@@ -1,8 +1,10 @@
-# colab_leecher/utility/task_manager.py
+# copyright 2024 © Xron Trix | https://github.com/Xrontrix10
+
 
 import pytz
 import shutil
 import logging
+import os
 from time import time
 from datetime import datetime
 from asyncio import sleep
@@ -246,22 +248,26 @@ async def Do_Mirror(source, is_ytdl, is_zip, is_unzip, is_dualzip):
     Transfer.total_down_size = getSize(Paths.down_path)
 
     applyCustomName()
-
-    cdt = datetime.now()
-    cdt_ = cdt.strftime("Uploaded » %Y-%m-%d %H:%M:%S")
-    mirror_dir_ = ospath.join(mirror_path, cdt_)
-
+    
+    source_path = Paths.down_path
     if is_zip:
         await Zip_Handler(Paths.down_path, True, True)
-        shutil.copytree(Paths.temp_zpath, mirror_dir_)
+        source_path = Paths.temp_zpath
     elif is_unzip:
         await Unzip_Handler(Paths.down_path, True)
-        shutil.copytree(Paths.temp_unzip_path, mirror_dir_)
+        source_path = Paths.temp_unzip_path
     elif is_dualzip:
         await Unzip_Handler(Paths.down_path, True)
         await Zip_Handler(Paths.temp_unzip_path, True, True)
-        shutil.copytree(Paths.temp_zpath, mirror_dir_)
-    else:
-        shutil.copytree(Paths.down_path, mirror_dir_)
+        source_path = Paths.temp_zpath
+
+    for item in os.listdir(source_path):
+        s = ospath.join(source_path, item)
+        d = ospath.join(mirror_path, item)
+        if ospath.isdir(s):
+            shutil.copytree(s, d, dirs_exist_ok=True)
+        else:
+            shutil.copy2(s, d)
+
 
     await SendLogs(False)
