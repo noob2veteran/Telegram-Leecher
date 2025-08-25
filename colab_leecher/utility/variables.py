@@ -1,5 +1,4 @@
-# copyright 2023 © Xron Trix | https://github.com/Xrontrix10
-
+# colab_leecher/utility/variables.py
 
 from time import time
 from datetime import datetime
@@ -40,7 +39,9 @@ class BOT:
         task_going = False
         prefix = False
         suffix = False
-        new_folder = False
+        creating_folder = False
+        create_folder_path = ""
+        ask_msg_id = 0
 
 
 class YTDL:
@@ -80,37 +81,13 @@ class Paths:
     MOUNTED_DRIVE = "/content/drive"
     down_path = f"{WORK_PATH}/Downloads"
     temp_dirleech_path = f"{WORK_PATH}/dir_leech_temp"
-    mirror_root = "/content/drive/MyDrive/Colab Leecher Uploads"
-    mirror_dir = mirror_root
+    mirror_dir = "/content/drive/MyDrive/Colab Leecher Uploads"
+    custom_mirror_dir = ""
     temp_zpath = f"{WORK_PATH}/Leeched_Files"
     temp_unzip_path = f"{WORK_PATH}/Unzipped_Files"
     temp_files_dir = f"{WORK_PATH}/leech_temp"
     thumbnail_ytdl = f"{WORK_PATH}/ytdl_thumbnails"
     access_token = "/content/token.pickle"
-
-import os, json
-_DEST_CFG = "/content/Telegram-Leecher/destination.json"
-
-def _load_destination():
-    try:
-        if os.path.exists(_DEST_CFG):
-            with open(_DEST_CFG) as f:
-                data = json.load(f)
-                mdir = data.get("mirror_dir")
-                if mdir:
-                    Paths.mirror_dir = mdir
-    except Exception:
-        pass
-_load_destination()
-
-def save_destination():
-    try:
-        os.makedirs(os.path.dirname(_DEST_CFG), exist_ok=True)
-        with open(_DEST_CFG, "w") as f:
-            json.dump({"mirror_dir": Paths.mirror_dir}, f)
-    except Exception:
-        pass
-    
 
 
 class Messages:
