@@ -1,5 +1,4 @@
-# copyright 2024 © Xron Trix | https://github.com/Xrontrix10
-
+# colab_leecher/utility/task_manager.py
 
 import pytz
 import shutil
@@ -238,8 +237,9 @@ async def Do_Mirror(source, is_ytdl, is_zip, is_unzip, is_dualzip):
         )
         return
 
-    if not ospath.exists(Paths.mirror_dir):
-        makedirs(Paths.mirror_dir)
+    mirror_path = Paths.custom_mirror_dir if Paths.custom_mirror_dir else Paths.mirror_dir
+    if not ospath.exists(mirror_path):
+        makedirs(mirror_path)
 
     await downloadManager(source, is_ytdl)
 
@@ -249,7 +249,7 @@ async def Do_Mirror(source, is_ytdl, is_zip, is_unzip, is_dualzip):
 
     cdt = datetime.now()
     cdt_ = cdt.strftime("Uploaded » %Y-%m-%d %H:%M:%S")
-    mirror_dir_ = ospath.join(Paths.mirror_dir, cdt_)
+    mirror_dir_ = ospath.join(mirror_path, cdt_)
 
     if is_zip:
         await Zip_Handler(Paths.down_path, True, True)
