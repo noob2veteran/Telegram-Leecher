@@ -1,6 +1,8 @@
-# colab_leecher/__main__.py
+# copyright 2024 © Xron Trix | https://github.com/Xrontrix10
 
-import logging, os
+
+import logging
+import os
 from pyrogram import filters
 from datetime import datetime
 from asyncio import sleep, get_event_loop
@@ -11,9 +13,18 @@ from .utility.task_manager import taskScheduler, task_starter
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from .utility.helper import isLink, setThumbnail, message_deleter, send_settings, get_folders, create_folder
 
-
 src_request_msg = None
+path_map = {}
+path_counter = 0
 
+def get_path_key(path):
+    global path_counter
+    for key, value in path_map.items():
+        if value == path:
+            return key
+    path_counter += 1
+    path_map[str(path_counter)] = path
+    return str(path_counter)
 
 @colab_bot.on_message(filters.command("start") & filters.private)
 async def start(client, message):
@@ -85,85 +96,86 @@ async def settings(client, message):
 
 
 @colab_bot.on_message(filters.reply)
-async def setPrefix(client, message):
-    global BOT, SETTING
+async def handle_replies(client, message):
+    global BOT
     if BOT.State.prefix:
         BOT.Setting.prefix = message.text
         BOT.State.prefix = False
-
         await send_settings(client, message, message.reply_to_message_id, False)
         await message.delete()
     elif BOT.State.suffix:
         BOT.Setting.suffix = message.text
         BOT.State.suffix = False
-
         await send_settings(client, message, message.reply_to_message_id, False)
         await message.delete()
-
-
-@colab_bot.on_message(filters.private & ~filters.command() & ~filters.photo)
-async def handle_private_messages(client, message):
-    global BOT
-    if BOT.State.creating_folder and hasattr(message, 'reply_to_message_id') and message.reply_to_message_id == BOT.State.ask_msg_id:
+    elif BOT.State.creating_folder and message.reply_to_message_id == BOT.State.ask_msg_id:
         folder_name = message.text
         path = BOT.State.create_folder_path
         if create_folder(path, folder_name):
             await message.reply_text(f"Folder '{folder_name}' created successfully in `{path}`.")
-            Paths.custom_mirror_dir = os.path.join(path, folder_name)
+            new_path = os.path.join(path, folder_name)
+            Paths.custom_mirror_dir = new_path
             await message.reply_text(f"Destination for mirror set to: `{Paths.custom_mirror_dir}`")
-
+            await send_folder_list(message, new_path)
         else:
             await message.reply_text("Failed to create folder.")
+            await send_folder_list(message, path)
+            
         BOT.State.creating_folder = False
         BOT.State.create_folder_path = ""
         await client.delete_messages(message.chat.id, BOT.State.ask_msg_id)
-        await send_folder_list(message, path)
-    elif isLink(None, None, message):
-        # Reset
-        BOT.Options.custom_name = ""
-        BOT.Options.zip_pswd = ""
-        BOT.Options.unzip_pswd = ""
+        BOT.State.ask_msg_id = 0
 
-        if src_request_msg:
-            await src_request_msg.delete()
-        if BOT.State.task_going == False and BOT.State.started:
-            temp_source = message.text.splitlines()
 
-            # Check for arguments in message
-            for _ in range(3):
-                if temp_source[-1][0] == "[":
-                    BOT.Options.custom_name = temp_source[-1][1:-1]
-                    temp_source.pop()
-                elif temp_source[-1][0] == "{":
-                    BOT.Options.zip_pswd = temp_source[-1][1:-1]
-                    temp_source.pop()
-                elif temp_source[-1][0] == "(":
-                    BOT.Options.unzip_pswd = temp_source[-1][1:-1]
-                    temp_source.pop()
-                else:
-                    break
+@colab_bot.on_message(filters.create(isLink) & ~filters.photo)
+async def handle_url(client, message):
+    global BOT
 
-            BOT.SOURCE = temp_source
-            keyboard = InlineKeyboardMarkup(
+    # Reset
+    BOT.Options.custom_name = ""
+    BOT.Options.zip_pswd = ""
+    BOT.Options.unzip_pswd = ""
+
+    if src_request_msg:
+        await src_request_msg.delete()
+    if not BOT.State.task_going and BOT.State.started:
+        temp_source = message.text.splitlines()
+
+        # Check for arguments in message
+        for _ in range(3):
+            if temp_source[-1].startswith("[") and temp_source[-1].endswith("]"):
+                BOT.Options.custom_name = temp_source[-1][1:-1]
+                temp_source.pop()
+            elif temp_source[-1].startswith("{") and temp_source[-1].endswith("}"):
+                BOT.Options.zip_pswd = temp_source[-1][1:-1]
+                temp_source.pop()
+            elif temp_source[-1].startswith("(") and temp_source[-1].endswith(")"):
+                BOT.Options.unzip_pswd = temp_source[-1][1:-1]
+                temp_source.pop()
+            else:
+                break
+
+        BOT.SOURCE = temp_source
+        keyboard = InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton("Regular", callback_data="normal")],
                 [
-                    [InlineKeyboardButton("Regular", callback_data="normal")],
-                    [
-                        InlineKeyboardButton("Compress", callback_data="zip"),
-                        InlineKeyboardButton("Extract", callback_data="unzip"),
-                    ],
-                    [InlineKeyboardButton("UnDoubleZip", callback_data="undzip")],
-                ]
-            )
-            await message.reply_text(
-                text=f"<b>🐹 Select Type of {BOT.Mode.mode.capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>",
-                reply_markup=keyboard,
-                quote=True,
-            )
-        elif BOT.State.started:
-            await message.delete()
-            await message.reply_text(
-                "<i>I am Already Working ! Please Wait Until I finish 😣!!</i>"
-            )
+                    InlineKeyboardButton("Compress", callback_data="zip"),
+                    InlineKeyboardButton("Extract", callback_data="unzip"),
+                ],
+                [InlineKeyboardButton("UnDoubleZip", callback_data="undzip")],
+            ]
+        )
+        await message.reply_text(
+            text=f"<b>🐹 Select Type of {BOT.Mode.mode.capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>",
+            reply_markup=keyboard,
+            quote=True,
+        )
+    elif BOT.State.started:
+        await message.delete()
+        await message.reply_text(
+            "<i>I am Already Working ! Please Wait Until I finish 😣!!</i>"
+        )
 
 
 @colab_bot.on_callback_query()
@@ -172,26 +184,34 @@ async def handle_options(client, callback_query):
     data = callback_query.data
 
     if data.startswith("selectfolder_"):
-        folder_path = data.split("_", 1)[1]
-        await callback_query.message.delete()
-        await send_folder_list(callback_query.message, path=folder_path, page=1)
+        key = data.split("_", 1)[1]
+        folder_path = path_map.get(key)
+        if folder_path:
+            await callback_query.message.delete()
+            await send_folder_list(callback_query, path=folder_path, page=1)
 
     elif data.startswith("folderpage_"):
-        _, path, page = data.split("_")
-        await callback_query.message.delete()
-        await send_folder_list(callback_query.message, path=path, page=int(page))
+        _, key, page = data.split("_")
+        path = path_map.get(key)
+        if path:
+            await callback_query.message.delete()
+            await send_folder_list(callback_query, path=path, page=int(page))
 
     elif data.startswith("createfolder_"):
-        path = data.split("_", 1)[1]
-        ask_msg = await callback_query.message.reply_text("Send me the name for the new folder.")
-        BOT.State.creating_folder = True
-        BOT.State.create_folder_path = path
-        BOT.State.ask_msg_id = ask_msg.id
+        key = data.split("_", 1)[1]
+        path = path_map.get(key)
+        if path:
+            ask_msg = await callback_query.message.reply_text("Send me the name for the new folder by replying to this message.")
+            BOT.State.creating_folder = True
+            BOT.State.create_folder_path = path
+            BOT.State.ask_msg_id = ask_msg.id
 
     elif data.startswith("setpath_"):
-        path = data.split("_", 1)[1]
-        Paths.custom_mirror_dir = path
-        await callback_query.message.edit_text(f"Destination for mirror set to: `{path}`")
+        key = data.split("_", 1)[1]
+        path = path_map.get(key)
+        if path:
+            Paths.custom_mirror_dir = path
+            await callback_query.message.edit_text(f"Destination for mirror set to: `{path}`")
 
     elif data in ["normal", "zip", "unzip", "undzip"]:
         BOT.Mode.type = data
@@ -337,9 +357,6 @@ async def handle_options(client, callback_query):
             BOT.Options.convert_quality = (
                 True if BOT.Setting.convert_quality == "High" else False
             )
-            await send_settings(
-                client, callback_query.message, callback_query.message.id, False
-            )
         else:
             BOT.Options.video_out = data
         await send_settings(
@@ -464,37 +481,43 @@ async def set_folder_command(client, message):
     if message.chat.id == OWNER:
         await send_folder_list(message)
 
-async def send_folder_list(message, path=Paths.mirror_dir, page=1):
+async def send_folder_list(obj, path=Paths.mirror_dir, page=1):
     folders, current_page, total_pages = get_folders(path, page)
     buttons = []
     for folder in folders:
-        buttons.append([InlineKeyboardButton(folder, callback_data=f"selectfolder_{os.path.join(path, folder)}")])
+        folder_path = os.path.join(path, folder)
+        key = get_path_key(folder_path)
+        buttons.append([InlineKeyboardButton(folder, callback_data=f"selectfolder_{key}")])
 
     navigation_buttons = []
+    path_key = get_path_key(path)
     if current_page > 1:
-        navigation_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"folderpage_{path}_{current_page-1}"))
+        navigation_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"folderpage_{path_key}_{current_page-1}"))
     if current_page < total_pages:
-        navigation_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"folderpage_{path}_{current_page+1}"))
+        navigation_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"folderpage_{path_key}_{current_page+1}"))
 
     if navigation_buttons:
         buttons.append(navigation_buttons)
 
-    buttons.append([InlineKeyboardButton("Create New Folder", callback_data=f"createfolder_{path}")])
-    buttons.append([InlineKeyboardButton("Set This Path", callback_data=f"setpath_{path}")])
+    buttons.append([InlineKeyboardButton("Create New Folder", callback_data=f"createfolder_{path_key}")])
+    buttons.append([InlineKeyboardButton("Set This Path", callback_data=f"setpath_{path_key}")])
     if path != Paths.mirror_dir:
         parent_dir = os.path.dirname(path)
-        buttons.append([InlineKeyboardButton("⬆️ Back to Parent", callback_data=f"folderpage_{parent_dir}_1")])
+        parent_key = get_path_key(parent_dir)
+        buttons.append([InlineKeyboardButton("⬆️ Back to Parent", callback_data=f"folderpage_{parent_key}_1")])
     buttons.append([InlineKeyboardButton("Close", callback_data="close")])
-    if hasattr(message, 'text'):
-        await message.reply_text(f"Select a folder or create a new one.\nCurrent Path: `{path}`", reply_markup=InlineKeyboardMarkup(buttons))
+
+    text = f"Select a folder or create a new one.\nCurrent Path: `{path}`"
+    if isinstance(obj, filters.CallbackQuery):
+        await obj.message.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
     else:
-        await message.message.reply_text(f"Select a folder or create a new one.\nCurrent Path: `{path}`", reply_markup=InlineKeyboardMarkup(buttons))
+        await obj.reply_text(text, reply_markup=InlineKeyboardMarkup(buttons))
 
 
 @colab_bot.on_message(filters.command("help") & filters.private)
 async def help_command(client, message):
     msg = await message.reply_text(
-        "Send /start To Check If I am alive 🤨\n\nSend /colabxr and follow prompts to start transloading 🚀\n\nSend /settings to edit bot settings ⚙️\n\nSend /setname To Set Custom File Name 📛\n\nSend /zipaswd To Set Password For Zip File 🔐\n\nSend /unzipaswd To Set Password to Extract Archives 🔓\n\nSend /setfolder to set custom mirror path 📂\n\n⚠️ **You can ALWAYS SEND an image To Set it as THUMBNAIL for your files 🌄**",
+        "Send /start To Check If I am alive 🤨\n\nSend /tupload, /gdupload etc. to start transloading 🚀\n\nSend /settings to edit bot settings ⚙️\n\nSend /setname To Set Custom File Name 📛\n\nSend /zipaswd To Set Password For Zip File 🔐\n\nSend /unzipaswd To Set Password to Extract Archives 🔓\n\nSend /setfolder to set custom mirror path 📂\n\n⚠️ **You can ALWAYS SEND an image To Set it as THUMBNAIL for your files 🌄**",
         quote=True,
         reply_markup=InlineKeyboardMarkup(
             [
